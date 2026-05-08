@@ -282,39 +282,54 @@ def load_data(file_path: Path) -> pd.DataFrame:
     return df.reset_index(drop=True)
 
 
+@st.cache_data(show_spinner=False)
+def load_all_data(excel_dir: Path) -> pd.DataFrame:
+    frames: list[pd.DataFrame] = []
+    for cat in CATEGORIES:
+        file_path = excel_dir / cat["file"]  # type: ignore[arg-type]
+        if not file_path.exists():
+            continue
+        df = load_data(file_path)
+        df["产品分类 (CATEGORY)"] = cat["name"]
+        frames.append(df)
+    if not frames:
+        return pd.DataFrame()
+    # 以第一个文件的列顺序为基准，缺少的列补 NA
+    base_cols = frames[0].columns.tolist()
+    aligned: list[pd.DataFrame] = []
+    for f in frames:
+        for c in base_cols:
+            if c not in f.columns:
+                f[c] = pd.NA
+        aligned.append(f[base_cols])
+    return pd.concat(aligned, ignore_index=True)
+
+
 def main() -> None:
     st.set_page_config(page_title="灯具自动选型工具", layout="wide")
     st.title("灯具自动选型工具")
-    st.caption("基于 Excel 数据进行多条件筛选与导出")
-
-    # ---- 产品分类选择 ----
-    with st.sidebar:
-        st.header("产品分类")
-        cat_names = [c["name"] for c in CATEGORIES]
-        selected_cat_name = st.radio("选择产品大类", options=cat_names, index=0)
-        selected_cat = next(c for c in CATEGORIES if c["name"] == selected_cat_name)
-
-    excel_path = EXCEL_DIR / selected_cat["file"]  # type: ignore[arg-type]
-    if not excel_path.exists():
-        st.error(f"未找到数据文件: {excel_path}")
-        return
+    st.caption("全品类产品库检索与规格书自动生成")
 
     try:
-        df = load_data(excel_path)
+        df = load_all_data(EXCEL_DIR)
     except Exception as exc:
         st.exception(exc)
         return
 
-    assets_dir: Path | None = selected_cat["assets"]  # type: ignore[assignment]
-    image_mapping = load_image_mapping_from_assets(assets_dir) if assets_dir else {}
+    if df.empty:
+        st.error("未加载到任何产品数据，请检查 excel/ 目录。")
+        return
 
-    st.success(f"已加载「{selected_cat_name}」{len(df)} 条产品数据，字段数 {len(df.columns)}")
+    # 合并所有分类的图片映射（当前仅室外路灯泛光灯有图片）
+    image_mapping: dict[int, dict[str, object]] = {}
+    for cat in CATEGORIES:
+        assets_dir: Path | None = cat["assets"]  # type: ignore[assignment]
+        if assets_dir:
+            image_mapping.update(load_image_mapping_from_assets(assets_dir))
+
+    st.success(f"已加载全品类 {len(df)} 条产品数据（{len(CATEGORIES)} 个分类），字段数 {len(df.columns)}")
     if image_mapping:
-        st.caption(f"图片文件夹关联已启用：按 Code 可匹配 {len(image_mapping)} 条图片映射（尺寸图/产品图，已统一转 JPG）")
-    elif assets_dir and assets_dir.exists():
-        st.caption("已检测到 assets 文件夹，但暂未解析到可用图片映射")
-    else:
-        st.caption("当前分类暂无图片资源，生成规格书时将使用占位图")
+        st.caption(f"图片关联已启用：按 Code 可匹配 {len(image_mapping)} 条图片映射")
 
     type_col = _find_column(df.columns.tolist(), ["灯具类型", "type"])
     family_col = _find_column(df.columns.tolist(), ["产品系列", "family"])
@@ -339,11 +354,18 @@ def main() -> None:
         return
 
     with st.sidebar:
-        st.divider()
         st.header("筛选条件")
         keep_null_numeric = st.checkbox("包含功率/光效为空的产品", value=True)
 
         filtered_df = df.copy()
+
+        # 0) 产品分类
+        cat_col = "产品分类 (CATEGORY)"
+        cat_options = sorted(filtered_df[cat_col].dropna().astype(str).unique().tolist())
+        selected_cats = st.multiselect("产品分类", options=cat_options)
+        if selected_cats:
+            filtered_df = filtered_df[filtered_df[cat_col].astype(str).isin(selected_cats)]
+
         # 1) 灯具类型
         type_options = sorted(filtered_df[type_col].dropna().astype(str).unique().tolist())
         selected_types = st.multiselect("灯具类型", options=type_options)
