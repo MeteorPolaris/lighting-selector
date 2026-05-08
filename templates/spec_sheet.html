@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lighting Specification</title>
+  <link rel="stylesheet" href="spec_sheet.css">
+</head>
+<body>
+  {% set spec_sections = sections if sections is defined and sections else [
+    {"en":"Information","cn":"基本信息","items":[
+      {"en":"MODEL","cn":"灯具型号","value":"{{MODEL}}"},
+      {"en":"TYPE","cn":"灯具类型","value":"{{TYPE}}"},
+      {"en":"FAMILY","cn":"产品系列","value":"{{FAMILY}}"},
+      {"en":"CERTIFICATION","cn":"认证标准","value":"{{CERTIFICATION}}"},
+      {"en":"LUMEN","cn":"流明输出","value":"{{LUMEN}}"},
+      {"en":"EFFICIENCY","cn":"光效","value":"{{EFFICIENCY}}"}
+    ]},
+    {"en":"Housing","cn":"灯体参数","items":[
+      {"en":"HOUSING","cn":"灯体","value":"{{HOUSING}}"},
+      {"en":"COLOR","cn":"颜色","value":"{{COLOR}}"},
+      {"en":"SURFACE FINISH","cn":"表面处理","value":"{{SURFACE_FINISH}}"},
+      {"en":"IP","cn":"防护等级","value":"{{IP}}"},
+      {"en":"MOUNTING","cn":"安装方式","value":"{{MOUNTING}}"},
+      {"en":"ACCESSORIES","cn":"机械配件","value":"{{ACCESSORIES}}"},
+      {"en":"WEIGHT","cn":"重量","value":"{{WEIGHT}}"}
+    ]},
+    {"en":"Optical","cn":"光学参数","items":[
+      {"en":"TEMPERATURE","cn":"工作温度","value":"{{TEMPERATURE}}"},
+      {"en":"SOURCE","cn":"光源","value":"{{SOURCE}}"},
+      {"en":"OPTICAL LENS","cn":"光学类型","value":"{{OPTICAL_LENS}}"},
+      {"en":"OPTIC ACCESSORIES","cn":"光学配件","value":"{{OPTIC_ACCESSORIES}}"},
+      {"en":"BEAM","cn":"光束角","value":"{{BEAM}}"},
+      {"en":"INTENSITY","cn":"峰值光强","value":"{{INTENSITY}}"},
+      {"en":"COLOR/CCT","cn":"色温/色品","value":"{{COLOR_CCT}}"},
+      {"en":"SDCM","cn":"色容差","value":"{{SDCM}}"},
+      {"en":"RA","cn":"显色指数","value":"{{RA}}"},
+      {"en":"MAINTENANCE","cn":"光通维持寿命","value":"{{MAINTENANCE}}"}
+    ]},
+    {"en":"Electrical","cn":"电气参数","items":[
+      {"en":"INPUT VOLTAGE","cn":"输入电压","value":"{{INPUT_VOLTAGE}}"},
+      {"en":"POWER","cn":"额定功率","value":"{{POWER}}"},
+      {"en":"CONTROL","cn":"控制","value":"{{CONTROL}}"},
+      {"en":"REQUIREMENT","cn":"调光要求","value":"{{REQUIREMENT}}"},
+      {"en":"RATING","cn":"电器防护等级","value":"{{RATING}}"},
+      {"en":"CONNECTION","cn":"灯具连接","value":"{{CONNECTION}}"}
+    ]}
+  ] %}
+  <div class="page">
+    <header class="top-header">
+      <div class="logo-wrap">
+        {% if logo_path %}
+        <img class="logo" src="{{ logo_path }}" alt="Company Logo">
+        {% else %}
+        <div class="placeholder-box">公司 Logo</div>
+        {% endif %}
+      </div>
+      <div class="title-wrap">
+        <h1>LIGHTING SPECIFICATION</h1>
+        <h2>产品规格书</h2>
+      </div>
+      <div class="rev-wrap">
+        <div>版本: {{ version | default("1.0") }}</div>
+        <div>REV: {{ rev | default("1.0") }}</div>
+      </div>
+    </header>
+
+    <section class="meta-row">
+      <div class="meta-item">
+        <span class="meta-label">Project Name 项目名称</span>
+        <span class="meta-value">{{ project_name | default("XXX项目") }}</span>
+      </div>
+      <div class="meta-item">
+        <span class="meta-label">Product Code 产品代码</span>
+        <span class="meta-value">{{ product_code | default("室外模板") }}</span>
+      </div>
+    </section>
+
+    <section class="content-grid">
+      <div class="left-panel">
+        <table class="spec-table">
+          <tbody>
+            {% for section in spec_sections %}
+            {% for item in section["items"] %}
+            <tr>
+              {% if loop.first %}
+              <td class="group-cell" rowspan="{{ section['items']|length }}">
+                <div class="group-en">{{ section['en'] }}</div>
+                <div class="group-cn">{{ section['cn'] }}</div>
+              </td>
+              {% endif %}
+              <td>
+                <div class="item-en">{{ item.en }}</div>
+                <div class="item-cn">{{ item.cn }}</div>
+              </td>
+              <td class="item-value">{{ item.value | default("/") }}</td>
+            </tr>
+            {% endfor %}
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="right-panel">
+        <div class="block">
+          <div class="block-title">Product Photos (产品照片)</div>
+          <div class="image-area">
+            {% if product_image_path %}
+            <img src="{{ product_image_path }}" alt="Product Photo">
+            {% else %}
+            <div class="placeholder-box">产品图占位</div>
+            {% endif %}
+          </div>
+          <div class="block-note">*Product images are for illustrative purpose only.</div>
+        </div>
+
+        <div class="block">
+          <div class="block-title">Dimension Drawing (产品尺寸图)</div>
+          <div class="image-area">
+            {% if dimension_image_path %}
+            <img src="{{ dimension_image_path }}" alt="Dimension Drawing">
+            {% else %}
+            <div class="placeholder-box">尺寸图占位</div>
+            {% endif %}
+          </div>
+          <div class="block-note">*尺寸可按项目需求进行定制，请以最终确认图纸为准。</div>
+        </div>
+
+        <div class="block">
+          <div class="block-title">Light Distribution (配光曲线)</div>
+          <div class="image-area">
+            {% if distribution_image_path %}
+            <img src="{{ distribution_image_path }}" alt="Light Distribution">
+            {% else %}
+            <div class="placeholder-box">配光图占位</div>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="remarks">
+      <div class="remarks-label">REMARKS 备注</div>
+      <div class="remarks-content">{{ remarks | default("/") }}</div>
+    </section>
+  </div>
+</body>
+</html>

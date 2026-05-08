@@ -1,0 +1,7 @@
+streamlit
+pandas
+openpyxl
+Pillow
+Jinja2
+WeasyPrint
+openpyxl_image_loader
