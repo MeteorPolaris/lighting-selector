@@ -7,7 +7,7 @@ from jinja2 import Environment, FileSystemLoader
 from PIL import Image
 
 
-EXCEL_FILE = Path("产品自动选型工具_1 Leon&Yawen_室外路灯泛光灯.xlsx")
+EXCEL_DIR = Path("excel")
 SHEET_NAME = "Sheet Database"
 HEADER_ROW_INDEX = 1
 CN_HEADER_ROW_INDEX = 2
@@ -15,13 +15,20 @@ DATA_START_ROW_INDEX = 3
 TEMPLATE_DIR = Path("templates")
 SPEC_TEMPLATE_FILE = "spec_sheet.html"
 GENERATED_PDF_DIR = Path(".generated/pdfs")
-ASSETS_DIR = Path("assets")
 PRODUCT_IMAGE_DIR_CANDIDATES = ["products", "product", "产品图"]
 DIMENSION_IMAGE_DIR_CANDIDATES = ["dimensions", "dimension", "sizes", "尺寸图"]
 NORMALIZED_IMAGE_DIR = Path(".generated/normalized_images")
 LOGO_IMAGE_FILE = Path(
     r"C:\Users\670297934\.cursor\projects\c-Users-670297934-Desktop-LightingProject\assets\c__Users_670297934_AppData_Roaming_Cursor_User_workspaceStorage_e0f13881465d320ad530a19d21702f1c_images_image-04f0323f-37ec-44a2-b2e8-cd0b5ae1325f.png"
 )
+
+CATEGORIES: list[dict[str, object]] = [
+    {"name": "室外路灯泛光灯", "file": "产品自动选型工具_1 Leon&Yawen_室外路灯泛光灯.xlsx", "assets": Path("assets")},
+    {"name": "室内办公工业", "file": "产品自动选型工具_2 Claire&Sonny_室内办公工业.xlsx", "assets": None},
+    {"name": "室内筒射灯灯带", "file": "产品自动选型工具_3 Eric&&Yvonne&Tiffany_室内筒射灯灯带.xlsx", "assets": None},
+    {"name": "室外景观亮化", "file": "产品自动选型工具_4 ChenChen _室外景观亮化.xlsx", "assets": None},
+    {"name": "DDP", "file": "产品自动选型工具_5 Raina&Ivy_DDP.xlsx", "assets": None},
+]
 
 
 def _clean_text(value: object) -> str:
@@ -276,29 +283,38 @@ def load_data(file_path: Path) -> pd.DataFrame:
 
 
 def main() -> None:
-    st.set_page_config(page_title="室外灯具自动选型", layout="wide")
-    st.title("室外灯具自动选型工具")
+    st.set_page_config(page_title="灯具自动选型工具", layout="wide")
+    st.title("灯具自动选型工具")
     st.caption("基于 Excel 数据进行多条件筛选与导出")
 
-    if not EXCEL_FILE.exists():
-        st.error(f"未找到数据文件: {EXCEL_FILE}")
+    # ---- 产品分类选择 ----
+    with st.sidebar:
+        st.header("产品分类")
+        cat_names = [c["name"] for c in CATEGORIES]
+        selected_cat_name = st.radio("选择产品大类", options=cat_names, index=0)
+        selected_cat = next(c for c in CATEGORIES if c["name"] == selected_cat_name)
+
+    excel_path = EXCEL_DIR / selected_cat["file"]  # type: ignore[arg-type]
+    if not excel_path.exists():
+        st.error(f"未找到数据文件: {excel_path}")
         return
 
     try:
-        df = load_data(EXCEL_FILE)
+        df = load_data(excel_path)
     except Exception as exc:
         st.exception(exc)
         return
 
-    image_mapping = load_image_mapping_from_assets(ASSETS_DIR)
+    assets_dir: Path | None = selected_cat["assets"]  # type: ignore[assignment]
+    image_mapping = load_image_mapping_from_assets(assets_dir) if assets_dir else {}
 
-    st.success(f"已加载 {len(df)} 条产品数据，字段数 {len(df.columns)}")
+    st.success(f"已加载「{selected_cat_name}」{len(df)} 条产品数据，字段数 {len(df.columns)}")
     if image_mapping:
         st.caption(f"图片文件夹关联已启用：按 Code 可匹配 {len(image_mapping)} 条图片映射（尺寸图/产品图，已统一转 JPG）")
-    elif ASSETS_DIR.exists():
+    elif assets_dir and assets_dir.exists():
         st.caption("已检测到 assets 文件夹，但暂未解析到可用图片映射")
     else:
-        st.caption("未检测到 assets 文件夹，后续生成规格书时将仅使用占位图")
+        st.caption("当前分类暂无图片资源，生成规格书时将使用占位图")
 
     type_col = _find_column(df.columns.tolist(), ["灯具类型", "type"])
     family_col = _find_column(df.columns.tolist(), ["产品系列", "family"])
@@ -323,7 +339,8 @@ def main() -> None:
         return
 
     with st.sidebar:
-        st.header("筛选条件（固定）")
+        st.divider()
+        st.header("筛选条件")
         keep_null_numeric = st.checkbox("包含功率/光效为空的产品", value=True)
 
         filtered_df = df.copy()
