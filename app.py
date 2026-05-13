@@ -553,6 +553,8 @@ def main() -> None:
                 pdf_bytes = pdf.output()
                 if isinstance(pdf_bytes, str):
                     pdf_bytes = pdf_bytes.encode('latin-1')
+                elif isinstance(pdf_bytes, bytearray):
+                    pdf_bytes = bytes(pdf_bytes)
 
                 st.success("PDF 生成成功！")
                 st.download_button(
