@@ -469,85 +469,128 @@ def main() -> None:
 
                 # 使用fpdf2生成PDF
                 from fpdf import FPDF
+                import re
+
+                def safe_text(text):
+                    """过滤中文字符，只保留ASCII"""
+                    return re.sub(r'[^\x00-\x7F]+', '', str(text)).strip() or '/'
 
                 class SpecPDF(FPDF):
                     def header(self):
-                        self.set_font('Helvetica', 'B', 16)
-                        self.cell(0, 10, 'LIGHTING SPECIFICATION', 0, 1, 'C')
-                        self.set_font('Helvetica', '', 12)
-                        self.cell(0, 10, 'Product Specification Sheet', 0, 1, 'C')
+                        # 标题区域
+                        self.set_font('Helvetica', 'B', 20)
+                        self.cell(0, 12, 'LIGHTING SPECIFICATION', 0, 1, 'C')
+                        self.set_font('Helvetica', '', 14)
+                        self.cell(0, 8, 'Product Specification Sheet', 0, 1, 'C')
+                        self.ln(3)
+                        # 版本信息
+                        self.set_font('Helvetica', '', 10)
+                        self.cell(95, 6, 'Version: 1.0', 0, 0, 'L')
+                        self.cell(95, 6, 'REV: 1.0', 0, 1, 'R')
+                        self.ln(2)
+                        # 分隔线
+                        self.set_draw_color(0, 0, 0)
+                        self.line(10, self.get_y(), 200, self.get_y())
                         self.ln(5)
 
                     def footer(self):
                         self.set_y(-15)
-                        self.set_font('Helvetica', '', 8)
+                        self.set_font('Helvetica', 'I', 8)
                         self.cell(0, 10, f'Page {self.page_no()}/{{nb}}', 0, 0, 'C')
 
                 pdf = SpecPDF()
                 pdf.alias_nb_pages()
                 pdf.add_page()
 
-                # 使用Helvetica字体（fpdf2内置）
+                # 项目信息区域
+                pdf.set_font('Helvetica', 'B', 11)
+                pdf.set_fill_color(240, 240, 240)
+                pdf.cell(95, 8, 'Project Name', 1, 0, 'L', True)
+                pdf.cell(95, 8, 'Product Code', 1, 1, 'L', True)
                 pdf.set_font('Helvetica', '', 10)
-
-                # 项目信息
-                pdf.set_font('Helvetica', 'B', 12)
-                # 过滤中文字符，只保留英文和数字
-                import re
-                safe_project_name = re.sub(r'[^\x00-\x7F]+', '', project_name).strip() or 'Project'
-                pdf.cell(0, 10, f'Project: {safe_project_name}', 0, 1)
-                pdf.cell(0, 10, f'Product Code: {_to_display_text(selected_row[code_col])}', 0, 1)
-                pdf.cell(0, 10, f'Version: 1.0  REV: 1.0', 0, 1)
+                pdf.cell(95, 8, safe_text(project_name), 1, 0, 'L')
+                pdf.cell(95, 8, safe_text(_to_display_text(selected_row[code_col])), 1, 1, 'L')
                 pdf.ln(5)
 
-                # 产品规格表
+                # 左侧规格表 + 右侧图片的布局
                 sections = _build_spec_sections(selected_row)
-                for section in sections:
-                    pdf.set_font('Helvetica', 'B', 11)
-                    pdf.set_fill_color(200, 200, 200)
-                    # 只显示英文标题，避免中文编码问题
-                    pdf.cell(0, 8, section["en"], 0, 1, 'L', True)
 
-                    pdf.set_font('Helvetica', '', 9)
+                # 计算规格表总行数
+                total_rows = sum(len(s['items']) for s in sections)
+                row_height = 6
+                table_height = total_rows * row_height + len(sections) * 8
+
+                # 左侧规格表 (宽度100)
+                left_x = 10
+                right_x = 115
+                table_width = 100
+
+                # 保存当前位置
+                start_y = pdf.get_y()
+
+                # 绘制规格表
+                for section in sections:
+                    # 分组标题
+                    pdf.set_font('Helvetica', 'B', 10)
+                    pdf.set_fill_color(50, 50, 50)
+                    pdf.set_text_color(255, 255, 255)
+                    pdf.cell(table_width, 7, f'  {section["en"]}', 0, 1, 'L', True)
+                    pdf.set_text_color(0, 0, 0)
+
+                    # 规格项
+                    pdf.set_font('Helvetica', '', 8)
                     for item in section['items']:
-                        value = item['value'] if item['value'] else '/'
-                        # 过滤中文字符
-                        safe_value = re.sub(r'[^\x00-\x7F]+', '', str(value)).strip() or '/'
-                        pdf.cell(60, 6, item["en"], 0, 0)
-                        pdf.cell(0, 6, safe_value, 0, 1)
-                    pdf.ln(3)
+                        value = safe_text(item['value'])
+                        pdf.cell(50, row_height, item["en"], 0, 0)
+                        pdf.cell(50, row_height, value, 0, 1)
+                    pdf.ln(2)
+
+                # 右侧图片区域
+                pdf.set_xy(right_x, start_y)
+                pdf.set_font('Helvetica', 'B', 10)
+                pdf.cell(85, 7, 'Product Photo', 0, 1, 'C')
+                pdf.set_x(right_x)
 
                 # 产品图片
                 if product_image_path and Path(product_image_path).exists():
-                    pdf.add_page()
-                    pdf.set_font('Helvetica', 'B', 12)
-                    pdf.cell(0, 10, 'Product Photo', 0, 1, 'C')
-                    pdf.ln(5)
                     try:
-                        pdf.image(product_image_path, x=30, w=150)
-                    except Exception:
-                        pdf.cell(0, 10, '[Image not available]', 0, 1, 'C')
+                        pdf.set_x(right_x)
+                        pdf.image(product_image_path, x=right_x, w=80)
+                    except Exception as e:
+                        pdf.set_x(right_x)
+                        pdf.cell(85, 40, '[Image not available]', 0, 1, 'C')
+                else:
+                    pdf.set_x(right_x)
+                    pdf.set_font('Helvetica', '', 9)
+                    pdf.cell(85, 40, '[No product image]', 0, 1, 'C')
+
+                pdf.ln(5)
 
                 # 尺寸图
-                if dimension_image_path and Path(dimension_image_path).exists():
-                    pdf.add_page()
-                    pdf.set_font('Helvetica', 'B', 12)
-                    pdf.cell(0, 10, 'Dimension Drawing', 0, 1, 'C')
-                    pdf.ln(5)
-                    try:
-                        pdf.image(dimension_image_path, x=30, w=150)
-                    except Exception:
-                        pdf.cell(0, 10, '[Image not available]', 0, 1, 'C')
+                pdf.set_x(right_x)
+                pdf.set_font('Helvetica', 'B', 10)
+                pdf.cell(85, 7, 'Dimension Drawing', 0, 1, 'C')
 
-                # 备注
+                if dimension_image_path and Path(dimension_image_path).exists():
+                    try:
+                        pdf.set_x(right_x)
+                        pdf.image(dimension_image_path, x=right_x, w=80)
+                    except Exception as e:
+                        pdf.set_x(right_x)
+                        pdf.cell(85, 40, '[Image not available]', 0, 1, 'C')
+                else:
+                    pdf.set_x(right_x)
+                    pdf.set_font('Helvetica', '', 9)
+                    pdf.cell(85, 40, '[No dimension image]', 0, 1, 'C')
+
+                # 备注区域
                 if remarks_text and remarks_text != '/':
-                    pdf.add_page()
-                    pdf.set_font('Helvetica', 'B', 12)
-                    pdf.cell(0, 10, 'REMARKS', 0, 1, 'L')
-                    pdf.set_font('Helvetica', '', 10)
-                    # 过滤中文字符
-                    safe_remarks = re.sub(r'[^\x00-\x7F]+', '', remarks_text).strip() or '/'
-                    pdf.multi_cell(0, 6, safe_remarks)
+                    pdf.ln(10)
+                    pdf.set_font('Helvetica', 'B', 10)
+                    pdf.set_fill_color(240, 240, 240)
+                    pdf.cell(0, 7, 'REMARKS', 0, 1, 'L', True)
+                    pdf.set_font('Helvetica', '', 9)
+                    pdf.multi_cell(0, 5, safe_text(remarks_text))
 
                 # 生成PDF字节
                 pdf_bytes = pdf.output()
