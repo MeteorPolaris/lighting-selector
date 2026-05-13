@@ -472,38 +472,32 @@ def main() -> None:
 
                 class SpecPDF(FPDF):
                     def header(self):
-                        self.set_font('Helvetica', 'B', 16)
+                        self.add_font('DejaVu', '', 'DejaVuSansCondensed.ttf', uni=True)
+                        self.add_font('DejaVu', 'B', 'DejaVuSansCondensed-Bold.ttf', uni=True)
+                        self.set_font('DejaVu', 'B', 16)
                         self.cell(0, 10, 'LIGHTING SPECIFICATION', 0, 1, 'C')
-                        self.set_font('Helvetica', '', 12)
+                        self.set_font('DejaVu', '', 12)
                         self.cell(0, 10, 'Product Specification Sheet', 0, 1, 'C')
                         self.ln(5)
 
                     def footer(self):
                         self.set_y(-15)
-                        self.set_font('Helvetica', 'I', 8)
+                        self.set_font('DejaVu', '', 8)
                         self.cell(0, 10, f'Page {self.page_no()}/{{nb}}', 0, 0, 'C')
 
                 pdf = SpecPDF()
                 pdf.alias_nb_pages()
                 pdf.add_page()
 
-                # 添加中文字体支持
+                # 添加Unicode字体支持
                 import os
-                font_path = os.path.join(os.path.dirname(__file__), 'fonts', 'msyh.ttc')
-                use_chinese_font = False
-                if os.path.exists(font_path):
-                    try:
-                        pdf.add_font('Msyh', '', font_path, uni=True)
-                        pdf.set_font('Msyh', '', 10)
-                        use_chinese_font = True
-                    except Exception:
-                        pass
-
-                if not use_chinese_font:
-                    pdf.set_font('Helvetica', '', 10)
+                # 使用fpdf2自带的DejaVu字体
+                pdf.add_font('DejaVu', '', 'DejaVuSansCondensed.ttf', uni=True)
+                pdf.add_font('DejaVu', 'B', 'DejaVuSansCondensed-Bold.ttf', uni=True)
+                pdf.set_font('DejaVu', '', 10)
 
                 # 项目信息
-                pdf.set_font('Helvetica', 'B', 12)
+                pdf.set_font('DejaVu', 'B', 12)
                 pdf.cell(0, 10, f'Project: {project_name}', 0, 1)
                 pdf.cell(0, 10, f'Product Code: {_to_display_text(selected_row[code_col])}', 0, 1)
                 pdf.cell(0, 10, f'Version: 1.0  REV: 1.0', 0, 1)
@@ -512,11 +506,11 @@ def main() -> None:
                 # 产品规格表
                 sections = _build_spec_sections(selected_row)
                 for section in sections:
-                    pdf.set_font('Helvetica', 'B', 11)
+                    pdf.set_font('DejaVu', 'B', 11)
                     pdf.set_fill_color(200, 200, 200)
                     pdf.cell(0, 8, f'{section["en"]} ({section["cn"]})', 0, 1, 'L', True)
 
-                    pdf.set_font('Helvetica', '', 9)
+                    pdf.set_font('DejaVu', '', 9)
                     for item in section['items']:
                         value = item['value'] if item['value'] else '/'
                         pdf.cell(60, 6, f'{item["en"]}', 0, 0)
@@ -526,7 +520,7 @@ def main() -> None:
                 # 产品图片
                 if product_image_path and Path(product_image_path).exists():
                     pdf.add_page()
-                    pdf.set_font('Helvetica', 'B', 12)
+                    pdf.set_font('DejaVu', 'B', 12)
                     pdf.cell(0, 10, 'Product Photo', 0, 1, 'C')
                     pdf.ln(5)
                     try:
@@ -537,7 +531,7 @@ def main() -> None:
                 # 尺寸图
                 if dimension_image_path and Path(dimension_image_path).exists():
                     pdf.add_page()
-                    pdf.set_font('Helvetica', 'B', 12)
+                    pdf.set_font('DejaVu', 'B', 12)
                     pdf.cell(0, 10, 'Dimension Drawing', 0, 1, 'C')
                     pdf.ln(5)
                     try:
@@ -548,9 +542,9 @@ def main() -> None:
                 # 备注
                 if remarks_text and remarks_text != '/':
                     pdf.add_page()
-                    pdf.set_font('Helvetica', 'B', 12)
+                    pdf.set_font('DejaVu', 'B', 12)
                     pdf.cell(0, 10, 'REMARKS', 0, 1, 'L')
-                    pdf.set_font('Helvetica', '', 10)
+                    pdf.set_font('DejaVu', '', 10)
                     pdf.multi_cell(0, 6, remarks_text)
 
                 # 生成PDF字节
