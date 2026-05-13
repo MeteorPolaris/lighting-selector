@@ -461,52 +461,110 @@ def main() -> None:
 
         if st.button("生成规格书 PDF", type="primary"):
             try:
-                try:
-                    from weasyprint import HTML
-                except Exception as import_exc:
-                    st.error("WeasyPrint 依赖未就绪，当前环境缺少系统库（如 GTK/Pango/Cairo）。")
-                    st.exception(import_exc)
-                    st.info("请先安装 WeasyPrint 的 Windows 系统依赖后再生成 PDF。")
-                    return
+                code_int = _to_code_int(selected_row[code_col])
+                image_info = image_mapping.get(code_int, {}) if code_int is not None else {}
 
-                if not TEMPLATE_DIR.joinpath(SPEC_TEMPLATE_FILE).exists():
-                    st.error(f"未找到模板文件: {TEMPLATE_DIR / SPEC_TEMPLATE_FILE}")
-                else:
-                    code_int = _to_code_int(selected_row[code_col])
-                    image_info = image_mapping.get(code_int, {}) if code_int is not None else {}
+                product_image_path = image_info.get("product_image_path")
+                dimension_image_path = image_info.get("dimension_image_path")
 
-                    product_image_path = image_info.get("product_image_path")
-                    dimension_image_path = image_info.get("dimension_image_path")
-                    distribution_image_path = None
+                # 使用fpdf2生成PDF
+                from fpdf import FPDF
 
-                    env = Environment(loader=FileSystemLoader(str(TEMPLATE_DIR.resolve())))
-                    template = env.get_template(SPEC_TEMPLATE_FILE)
+                class SpecPDF(FPDF):
+                    def header(self):
+                        self.set_font('Helvetica', 'B', 16)
+                        self.cell(0, 10, 'LIGHTING SPECIFICATION', 0, 1, 'C')
+                        self.set_font('Helvetica', '', 12)
+                        self.cell(0, 10, 'Product Specification Sheet', 0, 1, 'C')
+                        self.ln(5)
 
-                    html_content = template.render(
-                        logo_path=LOGO_IMAGE_FILE.as_uri() if LOGO_IMAGE_FILE.exists() else None,
-                        project_name=project_name,
-                        product_code=_to_display_text(selected_row[code_col]),
-                        version="1.0",
-                        rev="1.0",
-                        product_image_path=Path(product_image_path).as_uri() if product_image_path else None,
-                        dimension_image_path=Path(dimension_image_path).as_uri() if dimension_image_path else None,
-                        distribution_image_path=Path(distribution_image_path).as_uri() if distribution_image_path else None,
-                        remarks=remarks_text,
-                        sections=_build_spec_sections(selected_row),
-                    )
+                    def footer(self):
+                        self.set_y(-15)
+                        self.set_font('Helvetica', 'I', 8)
+                        self.cell(0, 10, f'Page {self.page_no()}/{{nb}}', 0, 0, 'C')
 
-                    pdf_bytes = HTML(string=html_content, base_url=str(TEMPLATE_DIR.resolve())).write_pdf()
-                    GENERATED_PDF_DIR.mkdir(parents=True, exist_ok=True)
-                    pdf_path = GENERATED_PDF_DIR / f"spec_sheet_code_{_to_display_text(selected_row[code_col]).replace('/', '_')}.pdf"
-                    pdf_path.write_bytes(pdf_bytes)
+                pdf = SpecPDF()
+                pdf.alias_nb_pages()
+                pdf.add_page()
 
-                    st.success(f"PDF 生成成功：{pdf_path}")
-                    st.download_button(
-                        label="下载规格书 PDF",
-                        data=pdf_bytes,
-                        file_name=pdf_path.name,
-                        mime="application/pdf",
-                    )
+                # 添加中文字体支持
+                import os
+                font_path = os.path.join(os.path.dirname(__file__), 'fonts', 'msyh.ttc')
+                use_chinese_font = False
+                if os.path.exists(font_path):
+                    try:
+                        pdf.add_font('Msyh', '', font_path, uni=True)
+                        pdf.set_font('Msyh', '', 10)
+                        use_chinese_font = True
+                    except Exception:
+                        pass
+
+                if not use_chinese_font:
+                    pdf.set_font('Helvetica', '', 10)
+
+                # 项目信息
+                pdf.set_font('Helvetica', 'B', 12)
+                pdf.cell(0, 10, f'Project: {project_name}', 0, 1)
+                pdf.cell(0, 10, f'Product Code: {_to_display_text(selected_row[code_col])}', 0, 1)
+                pdf.cell(0, 10, f'Version: 1.0  REV: 1.0', 0, 1)
+                pdf.ln(5)
+
+                # 产品规格表
+                sections = _build_spec_sections(selected_row)
+                for section in sections:
+                    pdf.set_font('Helvetica', 'B', 11)
+                    pdf.set_fill_color(200, 200, 200)
+                    pdf.cell(0, 8, f'{section["en"]} ({section["cn"]})', 0, 1, 'L', True)
+
+                    pdf.set_font('Helvetica', '', 9)
+                    for item in section['items']:
+                        value = item['value'] if item['value'] else '/'
+                        pdf.cell(60, 6, f'{item["en"]}', 0, 0)
+                        pdf.cell(0, 6, f'{item["cn"]}: {value}', 0, 1)
+                    pdf.ln(3)
+
+                # 产品图片
+                if product_image_path and Path(product_image_path).exists():
+                    pdf.add_page()
+                    pdf.set_font('Helvetica', 'B', 12)
+                    pdf.cell(0, 10, 'Product Photo', 0, 1, 'C')
+                    pdf.ln(5)
+                    try:
+                        pdf.image(product_image_path, x=30, w=150)
+                    except Exception:
+                        pdf.cell(0, 10, '[Image not available]', 0, 1, 'C')
+
+                # 尺寸图
+                if dimension_image_path and Path(dimension_image_path).exists():
+                    pdf.add_page()
+                    pdf.set_font('Helvetica', 'B', 12)
+                    pdf.cell(0, 10, 'Dimension Drawing', 0, 1, 'C')
+                    pdf.ln(5)
+                    try:
+                        pdf.image(dimension_image_path, x=30, w=150)
+                    except Exception:
+                        pdf.cell(0, 10, '[Image not available]', 0, 1, 'C')
+
+                # 备注
+                if remarks_text and remarks_text != '/':
+                    pdf.add_page()
+                    pdf.set_font('Helvetica', 'B', 12)
+                    pdf.cell(0, 10, 'REMARKS', 0, 1, 'L')
+                    pdf.set_font('Helvetica', '', 10)
+                    pdf.multi_cell(0, 6, remarks_text)
+
+                # 生成PDF字节
+                pdf_bytes = pdf.output()
+                if isinstance(pdf_bytes, str):
+                    pdf_bytes = pdf_bytes.encode('latin-1')
+
+                st.success("PDF 生成成功！")
+                st.download_button(
+                    label="下载规格书 PDF",
+                    data=pdf_bytes,
+                    file_name=f"spec_sheet_code_{_to_display_text(selected_row[code_col]).replace('/', '_')}.pdf",
+                    mime="application/pdf",
+                )
             except Exception as exc:
                 st.exception(exc)
 

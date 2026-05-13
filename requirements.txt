@@ -3,5 +3,5 @@ pandas
 openpyxl
 Pillow
 Jinja2
-WeasyPrint
+fpdf2
 openpyxl_image_loader
