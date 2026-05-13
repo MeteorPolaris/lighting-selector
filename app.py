@@ -1,5 +1,6 @@
 from pathlib import Path
 import re
+from io import BytesIO
 
 import pandas as pd
 import streamlit as st
@@ -467,145 +468,244 @@ def main() -> None:
                 product_image_path = image_info.get("product_image_path")
                 dimension_image_path = image_info.get("dimension_image_path")
 
-                # 使用fpdf2生成PDF
-                from fpdf import FPDF
-                import re
+                # 使用xhtml2pdf生成PDF（纯Python，无系统依赖）
+                from xhtml2pdf import pisa
+                import base64
 
-                def safe_text(text):
-                    """过滤中文字符，只保留ASCII"""
-                    return re.sub(r'[^\x00-\x7F]+', '', str(text)).strip() or '/'
+                def image_to_base64(image_path):
+                    """将图片转换为base64"""
+                    if image_path and Path(image_path).exists():
+                        with open(image_path, "rb") as img_file:
+                            return base64.b64encode(img_file.read()).decode()
+                    return None
 
-                class SpecPDF(FPDF):
-                    def header(self):
-                        # 标题区域
-                        self.set_font('Helvetica', 'B', 20)
-                        self.cell(0, 12, 'LIGHTING SPECIFICATION', 0, 1, 'C')
-                        self.set_font('Helvetica', '', 14)
-                        self.cell(0, 8, 'Product Specification Sheet', 0, 1, 'C')
-                        self.ln(3)
-                        # 版本信息
-                        self.set_font('Helvetica', '', 10)
-                        self.cell(95, 6, 'Version: 1.0', 0, 0, 'L')
-                        self.cell(95, 6, 'REV: 1.0', 0, 1, 'R')
-                        self.ln(2)
-                        # 分隔线
-                        self.set_draw_color(0, 0, 0)
-                        self.line(10, self.get_y(), 200, self.get_y())
-                        self.ln(5)
+                # 构建HTML内容
+                product_img_b64 = image_to_base64(product_image_path)
+                dimension_img_b64 = image_to_base64(dimension_image_path)
 
-                    def footer(self):
-                        self.set_y(-15)
-                        self.set_font('Helvetica', 'I', 8)
-                        self.cell(0, 10, f'Page {self.page_no()}/{{nb}}', 0, 0, 'C')
+                product_img_html = f'<img src="data:image/png;base64,{product_img_b64}" style="max-width:100%;">' if product_img_b64 else '<div class="placeholder">产品图占位</div>'
+                dimension_img_html = f'<img src="data:image/png;base64,{dimension_img_b64}" style="max-width:100%;">' if dimension_img_b64 else '<div class="placeholder">尺寸图占位</div>'
 
-                pdf = SpecPDF()
-                pdf.alias_nb_pages()
-                pdf.add_page()
-
-                # 项目信息区域
-                pdf.set_font('Helvetica', 'B', 11)
-                pdf.set_fill_color(240, 240, 240)
-                pdf.cell(95, 8, 'Project Name', 1, 0, 'L', True)
-                pdf.cell(95, 8, 'Product Code', 1, 1, 'L', True)
-                pdf.set_font('Helvetica', '', 10)
-                pdf.cell(95, 8, safe_text(project_name), 1, 0, 'L')
-                pdf.cell(95, 8, safe_text(_to_display_text(selected_row[code_col])), 1, 1, 'L')
-                pdf.ln(5)
-
-                # 左侧规格表 + 右侧图片的布局
                 sections = _build_spec_sections(selected_row)
 
-                # 计算规格表总行数
-                total_rows = sum(len(s['items']) for s in sections)
-                row_height = 6
-                table_height = total_rows * row_height + len(sections) * 8
-
-                # 左侧规格表 (宽度100)
-                left_x = 10
-                right_x = 115
-                table_width = 100
-
-                # 保存当前位置
-                start_y = pdf.get_y()
-
-                # 绘制规格表
+                # 构建规格表HTML
+                spec_rows = ""
                 for section in sections:
-                    # 分组标题
-                    pdf.set_font('Helvetica', 'B', 10)
-                    pdf.set_fill_color(50, 50, 50)
-                    pdf.set_text_color(255, 255, 255)
-                    pdf.cell(table_width, 7, f'  {section["en"]}', 0, 1, 'L', True)
-                    pdf.set_text_color(0, 0, 0)
+                    spec_rows += f'''
+                    <tr>
+                        <td class="group-cell" rowspan="{len(section['items'])}">
+                            <div class="group-en">{section['en']}</div>
+                            <div class="group-cn">{section['cn']}</div>
+                        </td>
+                    '''
+                    for i, item in enumerate(section['items']):
+                        if i > 0:
+                            spec_rows += '<tr>'
+                        value = item['value'] if item['value'] else '/'
+                        spec_rows += f'''
+                        <td>
+                            <div class="item-en">{item['en']}</div>
+                            <div class="item-cn">{item['cn']}</div>
+                        </td>
+                        <td class="item-value">{value}</td>
+                        </tr>
+                    '''
 
-                    # 规格项
-                    pdf.set_font('Helvetica', '', 8)
-                    for item in section['items']:
-                        value = safe_text(item['value'])
-                        pdf.cell(50, row_height, item["en"], 0, 0)
-                        pdf.cell(50, row_height, value, 0, 1)
-                    pdf.ln(2)
+                html_content = f'''
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset="utf-8">
+                    <style>
+                        @page {{
+                            size: A4;
+                            margin: 15mm;
+                        }}
+                        body {{
+                            font-family: Arial, sans-serif;
+                            font-size: 10px;
+                            line-height: 1.4;
+                        }}
+                        .header {{
+                            text-align: center;
+                            border-bottom: 2px solid #333;
+                            padding-bottom: 10px;
+                            margin-bottom: 15px;
+                        }}
+                        .header h1 {{
+                            font-size: 24px;
+                            margin: 0;
+                        }}
+                        .header h2 {{
+                            font-size: 16px;
+                            margin: 5px 0;
+                            font-weight: normal;
+                        }}
+                        .meta-row {{
+                            display: flex;
+                            justify-content: space-between;
+                            margin-bottom: 15px;
+                        }}
+                        .meta-item {{
+                            flex: 1;
+                        }}
+                        .meta-label {{
+                            font-size: 9px;
+                            color: #666;
+                        }}
+                        .meta-value {{
+                            font-size: 12px;
+                            font-weight: bold;
+                        }}
+                        .content-grid {{
+                            display: flex;
+                            gap: 20px;
+                        }}
+                        .left-panel {{
+                            flex: 1;
+                        }}
+                        .right-panel {{
+                            width: 200px;
+                        }}
+                        .spec-table {{
+                            width: 100%;
+                            border-collapse: collapse;
+                        }}
+                        .spec-table td {{
+                            padding: 4px 8px;
+                            border: 1px solid #ddd;
+                            vertical-align: top;
+                        }}
+                        .group-cell {{
+                            background-color: #f5f5f5;
+                            font-weight: bold;
+                            width: 80px;
+                        }}
+                        .group-en {{
+                            font-size: 10px;
+                        }}
+                        .group-cn {{
+                            font-size: 9px;
+                            color: #666;
+                        }}
+                        .item-en {{
+                            font-size: 10px;
+                            font-weight: bold;
+                        }}
+                        .item-cn {{
+                            font-size: 9px;
+                            color: #666;
+                        }}
+                        .item-value {{
+                            font-size: 10px;
+                        }}
+                        .block {{
+                            margin-bottom: 15px;
+                        }}
+                        .block-title {{
+                            font-size: 11px;
+                            font-weight: bold;
+                            margin-bottom: 8px;
+                        }}
+                        .image-area {{
+                            border: 1px solid #ddd;
+                            padding: 10px;
+                            text-align: center;
+                            min-height: 150px;
+                        }}
+                        .image-area img {{
+                            max-width: 100%;
+                            max-height: 200px;
+                        }}
+                        .placeholder {{
+                            color: #999;
+                            font-style: italic;
+                        }}
+                        .block-note {{
+                            font-size: 8px;
+                            color: #999;
+                            margin-top: 5px;
+                        }}
+                        .remarks {{
+                            margin-top: 20px;
+                            border-top: 1px solid #ddd;
+                            padding-top: 10px;
+                        }}
+                        .remarks-label {{
+                            font-weight: bold;
+                            margin-bottom: 5px;
+                        }}
+                    </style>
+                </head>
+                <body>
+                    <div class="header">
+                        <h1>LIGHTING SPECIFICATION</h1>
+                        <h2>产品规格书</h2>
+                        <div>版本: 1.0 | REV: 1.0</div>
+                    </div>
 
-                # 右侧图片区域
-                pdf.set_xy(right_x, start_y)
-                pdf.set_font('Helvetica', 'B', 10)
-                pdf.cell(85, 7, 'Product Photo', 0, 1, 'C')
-                pdf.set_x(right_x)
+                    <div class="meta-row">
+                        <div class="meta-item">
+                            <div class="meta-label">Project Name 项目名称</div>
+                            <div class="meta-value">{project_name}</div>
+                        </div>
+                        <div class="meta-item">
+                            <div class="meta-label">Product Code 产品代码</div>
+                            <div class="meta-value">{_to_display_text(selected_row[code_col])}</div>
+                        </div>
+                    </div>
 
-                # 产品图片
-                if product_image_path and Path(product_image_path).exists():
-                    try:
-                        pdf.set_x(right_x)
-                        pdf.image(product_image_path, x=right_x, w=80)
-                    except Exception as e:
-                        pdf.set_x(right_x)
-                        pdf.cell(85, 40, '[Image not available]', 0, 1, 'C')
+                    <div class="content-grid">
+                        <div class="left-panel">
+                            <table class="spec-table">
+                                <tbody>
+                                    {spec_rows}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div class="right-panel">
+                            <div class="block">
+                                <div class="block-title">Product Photos (产品照片)</div>
+                                <div class="image-area">
+                                    {product_img_html}
+                                </div>
+                                <div class="block-note">*Product images are for illustrative purpose only.</div>
+                            </div>
+
+                            <div class="block">
+                                <div class="block-title">Dimension Drawing (产品尺寸图)</div>
+                                <div class="image-area">
+                                    {dimension_img_html}
+                                </div>
+                                <div class="block-note">*尺寸可按项目需求进行定制，请以最终确认图纸为准。</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="remarks">
+                        <div class="remarks-label">REMARKS 备注</div>
+                        <div>{remarks_text}</div>
+                    </div>
+                </body>
+                </html>
+                '''
+
+                # 生成PDF
+                pdf_buffer = BytesIO()
+                pisa_status = pisa.CreatePDF(html_content, dest=pdf_buffer)
+
+                if pisa_status.err:
+                    st.error("PDF生成失败")
                 else:
-                    pdf.set_x(right_x)
-                    pdf.set_font('Helvetica', '', 9)
-                    pdf.cell(85, 40, '[No product image]', 0, 1, 'C')
-
-                pdf.ln(5)
-
-                # 尺寸图
-                pdf.set_x(right_x)
-                pdf.set_font('Helvetica', 'B', 10)
-                pdf.cell(85, 7, 'Dimension Drawing', 0, 1, 'C')
-
-                if dimension_image_path and Path(dimension_image_path).exists():
-                    try:
-                        pdf.set_x(right_x)
-                        pdf.image(dimension_image_path, x=right_x, w=80)
-                    except Exception as e:
-                        pdf.set_x(right_x)
-                        pdf.cell(85, 40, '[Image not available]', 0, 1, 'C')
-                else:
-                    pdf.set_x(right_x)
-                    pdf.set_font('Helvetica', '', 9)
-                    pdf.cell(85, 40, '[No dimension image]', 0, 1, 'C')
-
-                # 备注区域
-                if remarks_text and remarks_text != '/':
-                    pdf.ln(10)
-                    pdf.set_font('Helvetica', 'B', 10)
-                    pdf.set_fill_color(240, 240, 240)
-                    pdf.cell(0, 7, 'REMARKS', 0, 1, 'L', True)
-                    pdf.set_font('Helvetica', '', 9)
-                    pdf.multi_cell(0, 5, safe_text(remarks_text))
-
-                # 生成PDF字节
-                pdf_bytes = pdf.output()
-                if isinstance(pdf_bytes, str):
-                    pdf_bytes = pdf_bytes.encode('latin-1')
-                elif isinstance(pdf_bytes, bytearray):
-                    pdf_bytes = bytes(pdf_bytes)
-
-                st.success("PDF 生成成功！")
-                st.download_button(
-                    label="下载规格书 PDF",
-                    data=pdf_bytes,
-                    file_name=f"spec_sheet_code_{_to_display_text(selected_row[code_col]).replace('/', '_')}.pdf",
-                    mime="application/pdf",
-                )
+                    pdf_bytes = pdf_buffer.getvalue()
+                    st.success("PDF 生成成功！")
+                    st.download_button(
+                        label="下载规格书 PDF",
+                        data=pdf_bytes,
+                        file_name=f"spec_sheet_code_{_to_display_text(selected_row[code_col]).replace('/', '_')}.pdf",
+                        mime="application/pdf",
+                    )
             except Exception as exc:
                 st.exception(exc)
 
