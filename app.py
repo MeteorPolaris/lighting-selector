@@ -18,16 +18,14 @@ GENERATED_PDF_DIR = Path(".generated/pdfs")
 PRODUCT_IMAGE_DIR_CANDIDATES = ["products", "product", "产品图"]
 DIMENSION_IMAGE_DIR_CANDIDATES = ["dimensions", "dimension", "sizes", "尺寸图"]
 NORMALIZED_IMAGE_DIR = Path(".generated/normalized_images")
-LOGO_IMAGE_FILE = Path(
-    r"C:\Users\670297934\.cursor\projects\c-Users-670297934-Desktop-LightingProject\assets\c__Users_670297934_AppData_Roaming_Cursor_User_workspaceStorage_e0f13881465d320ad530a19d21702f1c_images_image-04f0323f-37ec-44a2-b2e8-cd0b5ae1325f.png"
-)
+LOGO_IMAGE_FILE = Path("assets") / "logo.png"
 
 CATEGORIES: list[dict[str, object]] = [
-    {"name": "室外路灯泛光灯", "file": "产品自动选型工具_1 Leon&Yawen_室外路灯泛光灯.xlsx", "assets": Path("assets")},
-    {"name": "室内办公工业", "file": "产品自动选型工具_2 Claire&Sonny_室内办公工业.xlsx", "assets": None},
-    {"name": "室内筒射灯灯带", "file": "产品自动选型工具_3 Eric&&Yvonne&Tiffany_室内筒射灯灯带.xlsx", "assets": None},
-    {"name": "室外景观亮化", "file": "产品自动选型工具_4 ChenChen _室外景观亮化.xlsx", "assets": None},
-    {"name": "DDP", "file": "产品自动选型工具_5 Raina&Ivy_DDP.xlsx", "assets": None},
+    {"name": "室外路灯泛光灯", "file": "产品自动选型工具_1 Leon&Yawen_室外路灯泛光灯.xlsx", "assets": Path("assets"), "image_subdir": "1_室外路灯泛光灯"},
+    {"name": "室内办公工业", "file": "产品自动选型工具_2 Claire&Sonny_室内办公工业.xlsx", "assets": Path("assets"), "image_subdir": "2_室内办公工业"},
+    {"name": "室内筒射灯灯带", "file": "产品自动选型工具_3 Eric&&Yvonne&Tiffany_室内筒射灯灯带.xlsx", "assets": Path("assets"), "image_subdir": "3_室内筒射灯灯带"},
+    {"name": "室外景观亮化", "file": "产品自动选型工具_4 ChenChen _室外景观亮化.xlsx", "assets": Path("assets"), "image_subdir": "4_室外景观亮化"},
+    {"name": "DDP", "file": "产品自动选型工具_5 Raina&Ivy_DDP.xlsx", "assets": Path("assets"), "image_subdir": "5_DDP"},
 ]
 
 
@@ -199,18 +197,23 @@ def _build_spec_sections(row: pd.Series) -> list[dict[str, object]]:
 
 
 @st.cache_data(show_spinner=False)
-def load_image_mapping_from_assets(assets_dir: Path) -> dict[int, dict[str, object]]:
+def load_image_mapping_from_assets(assets_dir: Path, image_subdir: str | None = None) -> dict[int, dict[str, object]]:
     if not assets_dir.exists():
         return {}
 
-    product_dir = _resolve_candidate_dir(assets_dir, PRODUCT_IMAGE_DIR_CANDIDATES)
-    dimension_dir = _resolve_candidate_dir(assets_dir, DIMENSION_IMAGE_DIR_CANDIDATES)
+    # 如果指定了子目录，扫描子文件夹；否则扫描根目录（兼容旧结构）
+    if image_subdir:
+        product_dir = assets_dir / "产品图" / image_subdir
+        dimension_dir = assets_dir / "尺寸图" / image_subdir
+    else:
+        product_dir = _resolve_candidate_dir(assets_dir, PRODUCT_IMAGE_DIR_CANDIDATES)
+        dimension_dir = _resolve_candidate_dir(assets_dir, DIMENSION_IMAGE_DIR_CANDIDATES)
 
     supported_ext = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff"}
     product_by_code: dict[int, Path] = {}
     dimension_by_code: dict[int, Path] = {}
 
-    if product_dir:
+    if product_dir and product_dir.exists():
         for file_path in product_dir.iterdir():
             if not file_path.is_file() or file_path.suffix.lower() not in supported_ext:
                 continue
@@ -218,7 +221,7 @@ def load_image_mapping_from_assets(assets_dir: Path) -> dict[int, dict[str, obje
                 if code not in product_by_code:
                     product_by_code[code] = file_path
 
-    if dimension_dir:
+    if dimension_dir and dimension_dir.exists():
         for file_path in dimension_dir.iterdir():
             if not file_path.is_file() or file_path.suffix.lower() not in supported_ext:
                 continue
@@ -320,12 +323,13 @@ def main() -> None:
         st.error("未加载到任何产品数据，请检查 excel/ 目录。")
         return
 
-    # 合并所有分类的图片映射（当前仅室外路灯泛光灯有图片）
+    # 合并所有分类的图片映射
     image_mapping: dict[int, dict[str, object]] = {}
     for cat in CATEGORIES:
         assets_dir: Path | None = cat["assets"]  # type: ignore[assignment]
+        image_subdir: str | None = cat.get("image_subdir")  # type: ignore[assignment]
         if assets_dir:
-            image_mapping.update(load_image_mapping_from_assets(assets_dir))
+            image_mapping.update(load_image_mapping_from_assets(assets_dir, image_subdir))
 
     st.success(f"已加载全品类 {len(df)} 条产品数据（{len(CATEGORIES)} 个分类），字段数 {len(df.columns)}")
     if image_mapping:
