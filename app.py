@@ -468,244 +468,121 @@ def main() -> None:
                 product_image_path = image_info.get("product_image_path")
                 dimension_image_path = image_info.get("dimension_image_path")
 
-                # 使用xhtml2pdf生成PDF（纯Python，无系统依赖）
-                from xhtml2pdf import pisa
-                import base64
+                # 使用reportlab生成PDF（纯Python，无系统依赖）
+                from reportlab.lib.pagesizes import A4
+                from reportlab.lib.units import mm
+                from reportlab.lib import colors
+                from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image as RLImage
+                from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+                from reportlab.lib.enums import TA_CENTER, TA_LEFT
 
-                def image_to_base64(image_path):
-                    """将图片转换为base64"""
-                    if image_path and Path(image_path).exists():
-                        with open(image_path, "rb") as img_file:
-                            return base64.b64encode(img_file.read()).decode()
-                    return None
+                # 创建PDF缓冲区
+                pdf_buffer = BytesIO()
+                doc = SimpleDocTemplate(pdf_buffer, pagesize=A4, topMargin=15*mm, bottomMargin=15*mm)
 
-                # 构建HTML内容
-                product_img_b64 = image_to_base64(product_image_path)
-                dimension_img_b64 = image_to_base64(dimension_image_path)
+                # 定义样式
+                styles = getSampleStyleSheet()
+                title_style = ParagraphStyle('Title', parent=styles['Title'], fontSize=24, alignment=TA_CENTER)
+                subtitle_style = ParagraphStyle('Subtitle', parent=styles['Normal'], fontSize=16, alignment=TA_CENTER)
+                normal_style = ParagraphStyle('Normal', parent=styles['Normal'], fontSize=10)
+                small_style = ParagraphStyle('Small', parent=styles['Normal'], fontSize=9, textColor=colors.grey)
 
-                product_img_html = f'<img src="data:image/png;base64,{product_img_b64}" style="max-width:100%;">' if product_img_b64 else '<div class="placeholder">产品图占位</div>'
-                dimension_img_html = f'<img src="data:image/png;base64,{dimension_img_b64}" style="max-width:100%;">' if dimension_img_b64 else '<div class="placeholder">尺寸图占位</div>'
+                # 构建内容
+                story = []
 
+                # 标题
+                story.append(Paragraph("LIGHTING SPECIFICATION", title_style))
+                story.append(Paragraph("产品规格书", subtitle_style))
+                story.append(Paragraph("版本: 1.0 | REV: 1.0", small_style))
+                story.append(Spacer(1, 10*mm))
+
+                # 项目信息
+                meta_data = [
+                    ['Project Name 项目名称', 'Product Code 产品代码'],
+                    [project_name, _to_display_text(selected_row[code_col])]
+                ]
+                meta_table = Table(meta_data, colWidths=[90*mm, 90*mm])
+                meta_table.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+                    ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                    ('FONTSIZE', (0, 0), (-1, 0), 9),
+                    ('FONTSIZE', (0, 1), (-1, 1), 12),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+                    ('GRID', (0, 0), (-1, -1), 1, colors.black),
+                ]))
+                story.append(meta_table)
+                story.append(Spacer(1, 10*mm))
+
+                # 规格表
                 sections = _build_spec_sections(selected_row)
+                spec_data = []
 
-                # 构建规格表HTML
-                spec_rows = ""
                 for section in sections:
-                    spec_rows += f'''
-                    <tr>
-                        <td class="group-cell" rowspan="{len(section['items'])}">
-                            <div class="group-en">{section['en']}</div>
-                            <div class="group-cn">{section['cn']}</div>
-                        </td>
-                    '''
-                    for i, item in enumerate(section['items']):
-                        if i > 0:
-                            spec_rows += '<tr>'
+                    # 分组标题
+                    spec_data.append([Paragraph(f"<b>{section['en']}</b><br/><font size=9 color=grey>{section['cn']}</font>", normal_style), '', ''])
+
+                    # 规格项
+                    for item in section['items']:
                         value = item['value'] if item['value'] else '/'
-                        spec_rows += f'''
-                        <td>
-                            <div class="item-en">{item['en']}</div>
-                            <div class="item-cn">{item['cn']}</div>
-                        </td>
-                        <td class="item-value">{value}</td>
-                        </tr>
-                    '''
+                        spec_data.append([
+                            Paragraph(f"<b>{item['en']}</b>", normal_style),
+                            Paragraph(f"<font size=9 color=grey>{item['cn']}</font>", small_style),
+                            Paragraph(str(value), normal_style)
+                        ])
 
-                html_content = f'''
-                <!DOCTYPE html>
-                <html>
-                <head>
-                    <meta charset="utf-8">
-                    <style>
-                        @page {{
-                            size: A4;
-                            margin: 15mm;
-                        }}
-                        body {{
-                            font-family: Arial, sans-serif;
-                            font-size: 10px;
-                            line-height: 1.4;
-                        }}
-                        .header {{
-                            text-align: center;
-                            border-bottom: 2px solid #333;
-                            padding-bottom: 10px;
-                            margin-bottom: 15px;
-                        }}
-                        .header h1 {{
-                            font-size: 24px;
-                            margin: 0;
-                        }}
-                        .header h2 {{
-                            font-size: 16px;
-                            margin: 5px 0;
-                            font-weight: normal;
-                        }}
-                        .meta-row {{
-                            display: flex;
-                            justify-content: space-between;
-                            margin-bottom: 15px;
-                        }}
-                        .meta-item {{
-                            flex: 1;
-                        }}
-                        .meta-label {{
-                            font-size: 9px;
-                            color: #666;
-                        }}
-                        .meta-value {{
-                            font-size: 12px;
-                            font-weight: bold;
-                        }}
-                        .content-grid {{
-                            display: flex;
-                            gap: 20px;
-                        }}
-                        .left-panel {{
-                            flex: 1;
-                        }}
-                        .right-panel {{
-                            width: 200px;
-                        }}
-                        .spec-table {{
-                            width: 100%;
-                            border-collapse: collapse;
-                        }}
-                        .spec-table td {{
-                            padding: 4px 8px;
-                            border: 1px solid #ddd;
-                            vertical-align: top;
-                        }}
-                        .group-cell {{
-                            background-color: #f5f5f5;
-                            font-weight: bold;
-                            width: 80px;
-                        }}
-                        .group-en {{
-                            font-size: 10px;
-                        }}
-                        .group-cn {{
-                            font-size: 9px;
-                            color: #666;
-                        }}
-                        .item-en {{
-                            font-size: 10px;
-                            font-weight: bold;
-                        }}
-                        .item-cn {{
-                            font-size: 9px;
-                            color: #666;
-                        }}
-                        .item-value {{
-                            font-size: 10px;
-                        }}
-                        .block {{
-                            margin-bottom: 15px;
-                        }}
-                        .block-title {{
-                            font-size: 11px;
-                            font-weight: bold;
-                            margin-bottom: 8px;
-                        }}
-                        .image-area {{
-                            border: 1px solid #ddd;
-                            padding: 10px;
-                            text-align: center;
-                            min-height: 150px;
-                        }}
-                        .image-area img {{
-                            max-width: 100%;
-                            max-height: 200px;
-                        }}
-                        .placeholder {{
-                            color: #999;
-                            font-style: italic;
-                        }}
-                        .block-note {{
-                            font-size: 8px;
-                            color: #999;
-                            margin-top: 5px;
-                        }}
-                        .remarks {{
-                            margin-top: 20px;
-                            border-top: 1px solid #ddd;
-                            padding-top: 10px;
-                        }}
-                        .remarks-label {{
-                            font-weight: bold;
-                            margin-bottom: 5px;
-                        }}
-                    </style>
-                </head>
-                <body>
-                    <div class="header">
-                        <h1>LIGHTING SPECIFICATION</h1>
-                        <h2>产品规格书</h2>
-                        <div>版本: 1.0 | REV: 1.0</div>
-                    </div>
+                spec_table = Table(spec_data, colWidths=[50*mm, 40*mm, 90*mm])
+                spec_table.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.darkgrey),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+                    ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                    ('FONTSIZE', (0, 0), (-1, -1), 10),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+                    ('GRID', (0, 0), (-1, -1), 1, colors.lightgrey),
+                    ('SPAN', (0, 0), (-1, 0)),  # 分组标题跨列
+                ]))
+                story.append(spec_table)
+                story.append(Spacer(1, 10*mm))
 
-                    <div class="meta-row">
-                        <div class="meta-item">
-                            <div class="meta-label">Project Name 项目名称</div>
-                            <div class="meta-value">{project_name}</div>
-                        </div>
-                        <div class="meta-item">
-                            <div class="meta-label">Product Code 产品代码</div>
-                            <div class="meta-value">{_to_display_text(selected_row[code_col])}</div>
-                        </div>
-                    </div>
+                # 产品图片
+                if product_image_path and Path(product_image_path).exists():
+                    story.append(Paragraph("<b>Product Photos (产品照片)</b>", normal_style))
+                    try:
+                        img = RLImage(product_image_path, width=150*mm, height=100*mm)
+                        story.append(img)
+                    except Exception:
+                        story.append(Paragraph("[Image not available]", small_style))
+                    story.append(Paragraph("*Product images are for illustrative purpose only.", small_style))
+                    story.append(Spacer(1, 5*mm))
 
-                    <div class="content-grid">
-                        <div class="left-panel">
-                            <table class="spec-table">
-                                <tbody>
-                                    {spec_rows}
-                                </tbody>
-                            </table>
-                        </div>
+                # 尺寸图
+                if dimension_image_path and Path(dimension_image_path).exists():
+                    story.append(Paragraph("<b>Dimension Drawing (产品尺寸图)</b>", normal_style))
+                    try:
+                        img = RLImage(dimension_image_path, width=150*mm, height=100*mm)
+                        story.append(img)
+                    except Exception:
+                        story.append(Paragraph("[Image not available]", small_style))
+                    story.append(Paragraph("*尺寸可按项目需求进行定制，请以最终确认图纸为准。", small_style))
+                    story.append(Spacer(1, 5*mm))
 
-                        <div class="right-panel">
-                            <div class="block">
-                                <div class="block-title">Product Photos (产品照片)</div>
-                                <div class="image-area">
-                                    {product_img_html}
-                                </div>
-                                <div class="block-note">*Product images are for illustrative purpose only.</div>
-                            </div>
-
-                            <div class="block">
-                                <div class="block-title">Dimension Drawing (产品尺寸图)</div>
-                                <div class="image-area">
-                                    {dimension_img_html}
-                                </div>
-                                <div class="block-note">*尺寸可按项目需求进行定制，请以最终确认图纸为准。</div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="remarks">
-                        <div class="remarks-label">REMARKS 备注</div>
-                        <div>{remarks_text}</div>
-                    </div>
-                </body>
-                </html>
-                '''
+                # 备注
+                if remarks_text and remarks_text != '/':
+                    story.append(Spacer(1, 10*mm))
+                    story.append(Paragraph("<b>REMARKS 备注</b>", normal_style))
+                    story.append(Paragraph(remarks_text, normal_style))
 
                 # 生成PDF
-                pdf_buffer = BytesIO()
-                pisa_status = pisa.CreatePDF(html_content, dest=pdf_buffer)
+                doc.build(story)
+                pdf_bytes = pdf_buffer.getvalue()
 
-                if pisa_status.err:
-                    st.error("PDF生成失败")
-                else:
-                    pdf_bytes = pdf_buffer.getvalue()
-                    st.success("PDF 生成成功！")
-                    st.download_button(
-                        label="下载规格书 PDF",
-                        data=pdf_bytes,
-                        file_name=f"spec_sheet_code_{_to_display_text(selected_row[code_col]).replace('/', '_')}.pdf",
-                        mime="application/pdf",
-                    )
+                st.success("PDF 生成成功！")
+                st.download_button(
+                    label="下载规格书 PDF",
+                    data=pdf_bytes,
+                    file_name=f"spec_sheet_code_{_to_display_text(selected_row[code_col]).replace('/', '_')}.pdf",
+                    mime="application/pdf",
+                )
             except Exception as exc:
                 st.exception(exc)
 
